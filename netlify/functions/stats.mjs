@@ -1,5 +1,18 @@
 const { connectLambda, getStore } = require("@netlify/blobs");
 
+function toBangkokDate(iso) {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Bangkok",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(iso));
+  } catch {
+    return null;
+  }
+}
+
 // GET /.netlify/functions/stats   (also reachable at /api/stats via redirect)
 // Optional query params: ?from=YYYY-MM-DD&to=YYYY-MM-DD  -> adds "rangeTotals"
 // Requires header  x-admin-key: <value of the ADMIN_KEY env var set in Netlify>
@@ -33,20 +46,27 @@ exports.handler = async (event) => {
   const recentVisits = (await store.get("recent_visit", { type: "json" })) || [];
   const recentOrders = (await store.get("recent_order", { type: "json" })) || [];
 
-  // Per-day breakdown: list every "daily:YYYY-MM-DD" key and read its value.
-  const daily = [];
-  const { blobs } = await store.list({ prefix: "daily:" });
-  for (const item of blobs) {
-    const date = item.key.replace("daily:", "");
-    const value = (await store.get(item.key, { type: "json" })) || {
-      visits: 0,
-      orders: 0,
-    };
-    daily.push({ date, visits: value.visits || 0, orders: value.orders || 0 });
+  // Build the per-day breakdown from the SAME logs shown in "recent
+  // activity" below, so the numbers can never disagree with each other.
+  // Note: these logs are capped at the last 100 events per type, so very
+  // old days may undercount once traffic grows past that — the all-time
+  // totals above are still exact regardless.
+  const dailyMap = {};
+  function bump(list, field) {
+    list.forEach((item) => {
+      const date = toBangkokDate(item.ts);
+      if (!date) return;
+      if (!dailyMap[date]) dailyMap[date] = { date, visits: 0, orders: 0 };
+      dailyMap[date][field] += 1;
+    });
   }
-  daily.sort((a, b) => (a.date < b.date ? 1 : -1)); // newest first
+  bump(recentVisits, "visits");
+  bump(recentOrders, "orders");
 
-  // Optional date-range sum
+  const daily = Object.values(dailyMap).sort((a, b) =>
+    a.date < b.date ? 1 : -1
+  );
+
   const qs = event.queryStringParameters || {};
   const from = qs.from;
   const to = qs.to;
