@@ -84,15 +84,20 @@ exports.handler = async (event) => {
     );
   }
 
+    // Use the SAME numbers shown in the daily table for the top summary
+  // cards too, so they can never disagree with each other again.
+  const visits = daily.reduce((s, d) => s + d.visits, 0);
+  const orders = daily.reduce((s, d) => s + d.orders, 0);
+
   return {
     statusCode: 200,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      visits: totals.visits || 0,
-      orders: totals.orders || 0,
+      visits: visits,
+      orders: orders,
       conversionRate:
-        totals.visits > 0
-          ? +((totals.orders / totals.visits) * 100).toFixed(2)
+        visits > 0
+          ? +((orders / visits) * 100).toFixed(2)
           : 0,
       recentVisits,
       recentOrders,
