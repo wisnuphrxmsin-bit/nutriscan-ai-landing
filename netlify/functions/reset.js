@@ -30,11 +30,16 @@ exports.handler = async (event) => {
     };
   }
 
-  const store = getStore("stats");
+    const store = getStore("stats");
 
   await store.setJSON("totals", { visits: 0, orders: 0 });
   await store.setJSON("recent_visit", []);
   await store.setJSON("recent_order", []);
+
+  // Bump the "generation" number so every browser's tracking flags reset
+  // automatically on its next page load, without needing a manual link.
+  const currentGen = (await store.get("generation", { type: "json" })) || 0;
+  await store.setJSON("generation", currentGen + 1);
 
   return {
     statusCode: 200,
