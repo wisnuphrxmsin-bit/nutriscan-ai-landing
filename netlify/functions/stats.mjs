@@ -1,6 +1,7 @@
 const { connectLambda, getStore } = require("@netlify/blobs");
 
 // GET /.netlify/functions/stats   (also reachable at /api/stats via redirect)
+// Optional query params: ?from=YYYY-MM-DD&to=YYYY-MM-DD  -> adds "rangeTotals"
 // Requires header  x-admin-key: <value of the ADMIN_KEY env var set in Netlify>
 exports.handler = async (event) => {
   connectLambda(event);
@@ -24,12 +25,44 @@ exports.handler = async (event) => {
   }
 
   const store = getStore("stats");
+
   const totals = (await store.get("totals", { type: "json" })) || {
     visits: 0,
     orders: 0,
   };
   const recentVisits = (await store.get("recent_visit", { type: "json" })) || [];
   const recentOrders = (await store.get("recent_order", { type: "json" })) || [];
+
+  // Per-day breakdown: list every "daily:YYYY-MM-DD" key and read its value.
+  const daily = [];
+  const { blobs } = await store.list({ prefix: "daily:" });
+  for (const item of blobs) {
+    const date = item.key.replace("daily:", "");
+    const value = (await store.get(item.key, { type: "json" })) || {
+      visits: 0,
+      orders: 0,
+    };
+    daily.push({ date, visits: value.visits || 0, orders: value.orders || 0 });
+  }
+  daily.sort((a, b) => (a.date < b.date ? 1 : -1)); // newest first
+
+  // Optional date-range sum
+  const qs = event.queryStringParameters || {};
+  const from = qs.from;
+  const to = qs.to;
+  let rangeTotals = null;
+  if (from && to) {
+    rangeTotals = daily.reduce(
+      (acc, d) => {
+        if (d.date >= from && d.date <= to) {
+          acc.visits += d.visits;
+          acc.orders += d.orders;
+        }
+        return acc;
+      },
+      { visits: 0, orders: 0, from, to }
+    );
+  }
 
   return {
     statusCode: 200,
@@ -43,6 +76,8 @@ exports.handler = async (event) => {
           : 0,
       recentVisits,
       recentOrders,
+      daily,
+      rangeTotals,
     }),
   };
 };
