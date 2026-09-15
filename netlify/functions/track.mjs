@@ -1,14 +1,5 @@
 const { connectLambda, getStore } = require("@netlify/blobs");
 
-function bangkokDateString(d = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Bangkok",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-}
-
 // POST /.netlify/functions/track   (also reachable at /api/track via redirect)
 // body: { "type": "visit" | "order", "page": "/" }
 exports.handler = async (event) => {
@@ -37,29 +28,18 @@ exports.handler = async (event) => {
   }
 
   const store = getStore("stats");
-  const field = type === "visit" ? "visits" : "orders";
 
-  // 1. All-time running total (kept for convenience / backwards compatibility)
+  // 1. All-time running total.
   const totalsKey = "totals";
   const totals = (await store.get(totalsKey, { type: "json" })) || {
     visits: 0,
     orders: 0,
   };
-  totals[field] += 1;
+  totals[type === "visit" ? "visits" : "orders"] += 1;
   await store.setJSON(totalsKey, totals);
 
-  // 2. Per-day counter (resets visually each day, but old days stay stored)
-  const today = bangkokDateString();
-  const dailyKey = "daily:" + today;
-  const daily = (await store.get(dailyKey, { type: "json" })) || {
-    visits: 0,
-    orders: 0,
-  };
-  daily[field] += 1;
-  await store.setJSON(dailyKey, daily);
-
-  // 3. Keep a short recent-activity log (capped) so the dashboard can show
-  //    the latest events, not just the totals.
+  // 2. Keep a recent-activity log (capped) — this is also what the
+  //    dashboard uses to build the per-day breakdown table.
   const logKey = "recent_" + type;
   const log = (await store.get(logKey, { type: "json" })) || [];
   log.unshift({
@@ -71,6 +51,6 @@ exports.handler = async (event) => {
   return {
     statusCode: 200,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ok: true, totals, daily: { date: today, ...daily } }),
+    body: JSON.stringify({ ok: true, totals }),
   };
 };
