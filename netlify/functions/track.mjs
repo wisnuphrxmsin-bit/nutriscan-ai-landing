@@ -1,8 +1,10 @@
-const { getStore } = require("@netlify/blobs");
+const { connectLambda, getStore } = require("@netlify/blobs");
 
 // POST /.netlify/functions/track   (also reachable at /api/track via redirect)
 // body: { "type": "visit" | "order", "page": "/" }
 exports.handler = async (event) => {
+  connectLambda(event);
+
   if (event.httpMethod !== "POST") {
     return {
       statusCode: 405,
@@ -27,7 +29,6 @@ exports.handler = async (event) => {
 
   const store = getStore("stats");
 
-  // 1. Bump the running total for this event type.
   const totalsKey = "totals";
   const totals = (await store.get(totalsKey, { type: "json" })) || {
     visits: 0,
@@ -36,8 +37,6 @@ exports.handler = async (event) => {
   totals[type === "visit" ? "visits" : "orders"] += 1;
   await store.setJSON(totalsKey, totals);
 
-  // 2. Keep a short recent-activity log (capped) so the dashboard can show
-  //    the latest events, not just the totals.
   const logKey = "recent_" + type;
   const log = (await store.get(logKey, { type: "json" })) || [];
   log.unshift({
