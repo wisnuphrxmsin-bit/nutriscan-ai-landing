@@ -35,22 +35,68 @@
     </div>
     <div class="flex gap-2">
       <button id="refresh-btn" class="px-4 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-sm font-medium">รีเฟรช</button>
+      <button id="reset-btn" class="px-4 py-2 rounded-lg bg-white border border-red-300 text-red-600 hover:bg-red-50 text-sm font-medium">รีเซ็ตข้อมูล</button>
       <button id="logout-btn" class="px-4 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-sm font-medium">ออกจากระบบ</button>
     </div>
   </div>
 
-  <div class="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-10">
+  <!-- All-time totals -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
     <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-      <div class="text-sm text-slate-500 mb-1">ผู้เข้าชมเว็บไซต์ (รวม)</div>
+      <div class="text-sm text-slate-500 mb-1">ผู้เข้าชมเว็บไซต์ (รวมทั้งหมด)</div>
       <div class="num text-4xl font-bold text-slate-900" id="stat-visits">-</div>
     </div>
     <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-      <div class="text-sm text-slate-500 mb-1">คนกดสั่งซื้อ (รวม)</div>
+      <div class="text-sm text-slate-500 mb-1">คนกดสั่งซื้อ (รวมทั้งหมด)</div>
       <div class="num text-4xl font-bold text-emerald-700" id="stat-orders">-</div>
     </div>
     <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
       <div class="text-sm text-slate-500 mb-1">อัตราการกดสั่งซื้อ</div>
       <div class="num text-4xl font-bold text-teal-700" id="stat-rate">-</div>
+    </div>
+  </div>
+
+  <!-- Date range filter -->
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm mb-8">
+    <h2 class="font-semibold mb-3">ดูยอดรวมช่วงวันที่</h2>
+    <div class="flex flex-wrap items-end gap-3">
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">จากวันที่</label>
+        <input id="range-from" type="date" class="border border-slate-300 rounded-lg px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">ถึงวันที่</label>
+        <input id="range-to" type="date" class="border border-slate-300 rounded-lg px-3 py-2 text-sm">
+      </div>
+      <button id="range-search-btn" class="px-5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold">ค้นหา</button>
+      <button id="range-clear-btn" class="px-4 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-sm font-medium">ล้างตัวกรอง</button>
+    </div>
+    <div id="range-result" class="hidden mt-4 pt-4 border-t border-slate-100 flex flex-wrap gap-6">
+      <div>
+        <div class="text-xs text-slate-500">ผู้เข้าชมในช่วงที่เลือก</div>
+        <div class="num text-2xl font-bold text-slate-900" id="range-visits">-</div>
+      </div>
+      <div>
+        <div class="text-xs text-slate-500">คนกดสั่งซื้อในช่วงที่เลือก</div>
+        <div class="num text-2xl font-bold text-emerald-700" id="range-orders">-</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Daily breakdown table -->
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm mb-8">
+    <h2 class="font-semibold mb-3">สถิติแยกตามวัน</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-slate-500 border-b border-slate-200">
+            <th class="py-2 pr-4">วันที่</th>
+            <th class="py-2 pr-4">ผู้เข้าชม</th>
+            <th class="py-2 pr-4">คนกดสั่งซื้อ</th>
+          </tr>
+        </thead>
+        <tbody id="daily-table-body"></tbody>
+      </table>
     </div>
   </div>
 
@@ -77,6 +123,15 @@
     }
   }
 
+  function fmtDate(dateStr) {
+    try {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  }
+
   function renderList(el, items) {
     el.innerHTML = '';
     if (!items || items.length === 0) {
@@ -91,8 +146,31 @@
     });
   }
 
-  async function loadStats(key) {
-    const res = await fetch('/api/stats', { headers: { 'x-admin-key': key } });
+  function renderDaily(daily) {
+    const tbody = document.getElementById('daily-table-body');
+    tbody.innerHTML = '';
+    if (!daily || daily.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="3" class="py-3 text-slate-400">ยังไม่มีข้อมูล</td></tr>';
+      return;
+    }
+    daily.forEach((d) => {
+      const tr = document.createElement('tr');
+      tr.className = 'border-b border-slate-100';
+      tr.innerHTML = `
+        <td class="py-2 pr-4">${fmtDate(d.date)}</td>
+        <td class="py-2 pr-4">${d.visits.toLocaleString('th-TH')}</td>
+        <td class="py-2 pr-4">${d.orders.toLocaleString('th-TH')}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function loadStats(key, from, to) {
+    let url = '/api/stats';
+    if (from && to) {
+      url += '?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to);
+    }
+    const res = await fetch(url, { headers: { 'x-admin-key': key } });
     if (!res.ok) throw new Error('unauthorized');
     return res.json();
   }
@@ -108,10 +186,31 @@
       document.getElementById('last-updated').textContent = new Date().toLocaleString('th-TH');
       renderList(document.getElementById('recent-visits'), data.recentVisits);
       renderList(document.getElementById('recent-orders'), data.recentOrders);
+      renderDaily(data.daily);
       localStorage.setItem(STORAGE_KEY, key);
     } catch (e) {
       document.getElementById('login-error').classList.remove('hidden');
       localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+
+  async function searchRange() {
+    const key = localStorage.getItem(STORAGE_KEY);
+    if (!key) return;
+    const from = document.getElementById('range-from').value;
+    const to = document.getElementById('range-to').value;
+    if (!from || !to) {
+      alert('กรุณาเลือกทั้งวันที่เริ่มต้นและวันที่สิ้นสุด');
+      return;
+    }
+    try {
+      const data = await loadStats(key, from, to);
+      const rt = data.rangeTotals || { visits: 0, orders: 0 };
+      document.getElementById('range-visits').textContent = rt.visits.toLocaleString('th-TH');
+      document.getElementById('range-orders').textContent = rt.orders.toLocaleString('th-TH');
+      document.getElementById('range-result').classList.remove('hidden');
+    } catch (e) {
+      alert('ดึงข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง');
     }
   }
 
@@ -129,13 +228,38 @@
     if (key) showDashboard(key);
   });
 
+  document.getElementById('reset-btn')?.addEventListener('click', async () => {
+    const key = localStorage.getItem(STORAGE_KEY);
+    if (!key) return;
+    const confirmed = confirm('ยืนยันรีเซ็ตข้อมูลทั้งหมด? การกระทำนี้ไม่สามารถย้อนกลับได้');
+    if (!confirmed) return;
+    try {
+      const res = await fetch('/api/reset', {
+        method: 'POST',
+        headers: { 'x-admin-key': key },
+      });
+      if (!res.ok) throw new Error('reset failed');
+      await showDashboard(key);
+      alert('รีเซ็ตข้อมูลเรียบร้อยแล้ว');
+    } catch (e) {
+      alert('รีเซ็ตไม่สำเร็จ ลองใหม่อีกครั้ง');
+    }
+  });
+
   document.getElementById('logout-btn')?.addEventListener('click', () => {
     localStorage.removeItem(STORAGE_KEY);
     document.getElementById('dashboard').classList.add('hidden');
     document.getElementById('login-screen').classList.remove('hidden');
   });
 
-  // Auto-login if a key was already saved in this browser.
+  document.getElementById('range-search-btn')?.addEventListener('click', searchRange);
+
+  document.getElementById('range-clear-btn')?.addEventListener('click', () => {
+    document.getElementById('range-from').value = '';
+    document.getElementById('range-to').value = '';
+    document.getElementById('range-result').classList.add('hidden');
+  });
+
   const savedKey = localStorage.getItem(STORAGE_KEY);
   if (savedKey) showDashboard(savedKey);
 </script>
