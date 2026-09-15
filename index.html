@@ -475,6 +475,9 @@
 <!-- Client-side script for Modal and Code Copy behavior -->
 <script>
     // ---- Visitor & order-click tracking (Netlify Function + Blobs) ----
+    // Each browser is only counted once per event type, using localStorage
+    // as a "already counted" flag. Clearing browser data, using a different
+    // browser, or private/incognito mode will count as a new person again.
     function trackEvent(type) {
       try {
         fetch('/api/track', {
@@ -485,13 +488,25 @@
       } catch (e) {}
     }
 
-    // Count one visit per page load
+    function trackOnce(type, storageKey) {
+      try {
+        if (localStorage.getItem(storageKey)) {
+          return; // already counted this browser before — skip
+        }
+        localStorage.setItem(storageKey, '1');
+      } catch (e) {
+        // localStorage unavailable (e.g. blocked) — fall back to always tracking
+      }
+      trackEvent(type);
+    }
+
+    // Count one visit per person (not per page load)
     window.addEventListener('DOMContentLoaded', function () {
-      trackEvent('visit');
+      trackOnce('visit', 'nutriscan_visit_counted');
     });
 
     function triggerOrderError() {
-      trackEvent('order');
+      trackOnce('order', 'nutriscan_order_counted');
       const modal = document.getElementById('order-error-modal');
       if (modal) {
         modal.classList.remove('hidden');
