@@ -474,10 +474,12 @@
 </div>
 <!-- Client-side script for Modal and Code Copy behavior -->
 <script>
-    // ---- Visitor & order-click tracking (Netlify Function + Blobs) ----
+     // ---- Visitor & order-click tracking (Netlify Function + Blobs) ----
     // Each browser is only counted once per event type, using localStorage
-    // as a "already counted" flag. Clearing browser data, using a different
-    // browser, or private/incognito mode will count as a new person again.
+    // as an "already counted" flag. When the admin presses "รีเซ็ตข้อมูล",
+    // the server bumps a "generation" number; every browser compares this
+    // number on page load and automatically forgets its own flags if the
+    // server has moved on to a new generation — no manual link needed.
     function trackEvent(type) {
       try {
         fetch('/api/track', {
@@ -495,14 +497,36 @@
         }
         localStorage.setItem(storageKey, '1');
       } catch (e) {
-        // localStorage unavailable (e.g. blocked) — fall back to always tracking
+        // localStorage unavailable — fall back to always tracking
       }
       trackEvent(type);
     }
 
-    // Count one visit per person (not per page load)
+    function checkResetGeneration(callback) {
+      fetch('/api/generation')
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          var serverGen = String(data.generation);
+          var localGen = localStorage.getItem('nutriscan_generation');
+          if (localGen !== serverGen) {
+            // Server was reset since our last visit — forget our flags.
+            localStorage.removeItem('nutriscan_visit_counted');
+            localStorage.removeItem('nutriscan_order_counted');
+            localStorage.setItem('nutriscan_generation', serverGen);
+          }
+          callback();
+        })
+        .catch(function () {
+          callback(); // if this fails, just proceed with tracking as normal
+        });
+    }
+
+    // Count one visit per person (not per page load), after checking
+    // whether the admin has reset the counters since our last visit.
     window.addEventListener('DOMContentLoaded', function () {
-      trackOnce('visit', 'nutriscan_visit_counted');
+      checkResetGeneration(function () {
+        trackOnce('visit', 'nutriscan_visit_counted');
+      });
     });
 
     function triggerOrderError() {
