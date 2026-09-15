@@ -40,14 +40,17 @@
     </div>
   </div>
 
-  <!-- All-time totals -->
+  <!-- Summary cards: show either all-time totals, or the selected date range -->
+  <div class="mb-2 flex items-center gap-2">
+    <span id="summary-mode-badge" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-200 text-slate-600">รวมทั้งหมด</span>
+  </div>
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
     <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-      <div class="text-sm text-slate-500 mb-1">ผู้เข้าชมเว็บไซต์ (รวมทั้งหมด)</div>
+      <div class="text-sm text-slate-500 mb-1">ผู้เข้าชมเว็บไซต์</div>
       <div class="num text-4xl font-bold text-slate-900" id="stat-visits">-</div>
     </div>
     <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-      <div class="text-sm text-slate-500 mb-1">คนกดสั่งซื้อ (รวมทั้งหมด)</div>
+      <div class="text-sm text-slate-500 mb-1">คนกดสั่งซื้อ</div>
       <div class="num text-4xl font-bold text-emerald-700" id="stat-orders">-</div>
     </div>
     <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
@@ -69,18 +72,9 @@
         <input id="range-to" type="date" class="border border-slate-300 rounded-lg px-3 py-2 text-sm">
       </div>
       <button id="range-search-btn" class="px-5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold">ค้นหา</button>
-      <button id="range-clear-btn" class="px-4 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-sm font-medium">ล้างตัวกรอง</button>
+      <button id="range-clear-btn" class="px-4 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-sm font-medium">ล้างตัวกรอง (ดูรวมทั้งหมด)</button>
     </div>
-    <div id="range-result" class="hidden mt-4 pt-4 border-t border-slate-100 flex flex-wrap gap-6">
-      <div>
-        <div class="text-xs text-slate-500">ผู้เข้าชมในช่วงที่เลือก</div>
-        <div class="num text-2xl font-bold text-slate-900" id="range-visits">-</div>
-      </div>
-      <div>
-        <div class="text-xs text-slate-500">คนกดสั่งซื้อในช่วงที่เลือก</div>
-        <div class="num text-2xl font-bold text-emerald-700" id="range-orders">-</div>
-      </div>
-    </div>
+    <p class="text-xs text-slate-400 mt-3">กด "ค้นหา" แล้วตัวเลขในการ์ดด้านบนจะเปลี่ยนเป็นยอดของช่วงวันที่เลือกทันที</p>
   </div>
 
   <!-- Daily breakdown table -->
@@ -98,6 +92,7 @@
         <tbody id="daily-table-body"></tbody>
       </table>
     </div>
+    <p class="text-xs text-slate-400 mt-3">* อ้างอิงจาก log กิจกรรมล่าสุด 100 รายการต่อประเภท ถ้ามีคนเข้าชม/สั่งซื้อมากกว่านี้ วันเก่าๆอาจแสดงตัวเลขไม่ครบ แต่ยอดรวมทั้งหมดด้านบนยังถูกต้องเสมอ</p>
   </div>
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -114,6 +109,7 @@
 
 <script>
   const STORAGE_KEY = 'nutriscan_admin_key';
+  let fullStatsCache = null; // last fetched all-time stats, used to "clear filter"
 
   function fmtTime(iso) {
     try {
@@ -165,6 +161,14 @@
     });
   }
 
+  function setSummaryCards(visits, orders, badgeText) {
+    const rate = visits > 0 ? +((orders / visits) * 100).toFixed(2) : 0;
+    document.getElementById('stat-visits').textContent = visits.toLocaleString('th-TH');
+    document.getElementById('stat-orders').textContent = orders.toLocaleString('th-TH');
+    document.getElementById('stat-rate').textContent = rate + '%';
+    document.getElementById('summary-mode-badge').textContent = badgeText;
+  }
+
   async function loadStats(key, from, to) {
     let url = '/api/stats';
     if (from && to) {
@@ -178,11 +182,10 @@
   async function showDashboard(key) {
     try {
       const data = await loadStats(key);
+      fullStatsCache = data;
       document.getElementById('login-screen').classList.add('hidden');
       document.getElementById('dashboard').classList.remove('hidden');
-      document.getElementById('stat-visits').textContent = data.visits.toLocaleString('th-TH');
-      document.getElementById('stat-orders').textContent = data.orders.toLocaleString('th-TH');
-      document.getElementById('stat-rate').textContent = data.conversionRate + '%';
+      setSummaryCards(data.visits, data.orders, 'รวมทั้งหมด');
       document.getElementById('last-updated').textContent = new Date().toLocaleString('th-TH');
       renderList(document.getElementById('recent-visits'), data.recentVisits);
       renderList(document.getElementById('recent-orders'), data.recentOrders);
@@ -206,9 +209,8 @@
     try {
       const data = await loadStats(key, from, to);
       const rt = data.rangeTotals || { visits: 0, orders: 0 };
-      document.getElementById('range-visits').textContent = rt.visits.toLocaleString('th-TH');
-      document.getElementById('range-orders').textContent = rt.orders.toLocaleString('th-TH');
-      document.getElementById('range-result').classList.remove('hidden');
+      const badge = fmtDate(from) + ' – ' + fmtDate(to);
+      setSummaryCards(rt.visits, rt.orders, badge);
     } catch (e) {
       alert('ดึงข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง');
     }
@@ -257,7 +259,9 @@
   document.getElementById('range-clear-btn')?.addEventListener('click', () => {
     document.getElementById('range-from').value = '';
     document.getElementById('range-to').value = '';
-    document.getElementById('range-result').classList.add('hidden');
+    if (fullStatsCache) {
+      setSummaryCards(fullStatsCache.visits, fullStatsCache.orders, 'รวมทั้งหมด');
+    }
   });
 
   const savedKey = localStorage.getItem(STORAGE_KEY);
