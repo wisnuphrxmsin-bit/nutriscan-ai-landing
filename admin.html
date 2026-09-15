@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NutriScan AI — หลังบ้าน (Admin Dashboard)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Noto Sans Thai', sans-serif; }
+  .num { font-family: 'Space Grotesk', sans-serif; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+
+<div id="login-screen" class="min-h-screen flex items-center justify-center px-4">
+  <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-8">
+    <h1 class="text-xl font-bold mb-1">เข้าสู่ระบบหลังบ้าน</h1>
+    <p class="text-sm text-slate-500 mb-6">กรอกรหัสผ่านแอดมิน (ADMIN_KEY) เพื่อดูสถิติ</p>
+    <input id="admin-key-input" type="password" placeholder="รหัสผ่านแอดมิน"
+      class="w-full border border-slate-300 rounded-lg px-4 py-2.5 mb-3 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+    <button id="login-btn"
+      class="w-full bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg py-2.5 font-semibold transition-colors">
+      เข้าดูสถิติ
+    </button>
+    <p id="login-error" class="text-sm text-red-600 mt-3 hidden">รหัสผ่านไม่ถูกต้อง หรือยังไม่ได้ตั้งค่า ADMIN_KEY</p>
+  </div>
+</div>
+
+<div id="dashboard" class="hidden max-w-5xl mx-auto px-4 py-10">
+  <div class="flex items-center justify-between mb-8">
+    <div>
+      <h1 class="text-2xl font-bold">NutriScan AI — สถิติเว็บไซต์</h1>
+      <p class="text-sm text-slate-500 mt-1">อัปเดตล่าสุด: <span id="last-updated">-</span></p>
+    </div>
+    <div class="flex gap-2">
+      <button id="refresh-btn" class="px-4 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-sm font-medium">รีเฟรช</button>
+      <button id="logout-btn" class="px-4 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-sm font-medium">ออกจากระบบ</button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-10">
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <div class="text-sm text-slate-500 mb-1">ผู้เข้าชมเว็บไซต์ (รวม)</div>
+      <div class="num text-4xl font-bold text-slate-900" id="stat-visits">-</div>
+    </div>
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <div class="text-sm text-slate-500 mb-1">คนกดสั่งซื้อ (รวม)</div>
+      <div class="num text-4xl font-bold text-emerald-700" id="stat-orders">-</div>
+    </div>
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <div class="text-sm text-slate-500 mb-1">อัตราการกดสั่งซื้อ</div>
+      <div class="num text-4xl font-bold text-teal-700" id="stat-rate">-</div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+      <h2 class="font-semibold mb-3">การเข้าชมล่าสุด</h2>
+      <div id="recent-visits" class="space-y-1.5 text-sm text-slate-600 max-h-80 overflow-y-auto"></div>
+    </div>
+    <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+      <h2 class="font-semibold mb-3">การกดสั่งซื้อล่าสุด</h2>
+      <div id="recent-orders" class="space-y-1.5 text-sm text-slate-600 max-h-80 overflow-y-auto"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const STORAGE_KEY = 'nutriscan_admin_key';
+
+  function fmtTime(iso) {
+    try {
+      return new Date(iso).toLocaleString('th-TH');
+    } catch {
+      return iso;
+    }
+  }
+
+  function renderList(el, items) {
+    el.innerHTML = '';
+    if (!items || items.length === 0) {
+      el.innerHTML = '<div class="text-slate-400">ยังไม่มีข้อมูล</div>';
+      return;
+    }
+    items.slice(0, 20).forEach((item) => {
+      const row = document.createElement('div');
+      row.className = 'flex items-center justify-between border-b border-slate-100 pb-1.5';
+      row.innerHTML = `<span>${fmtTime(item.ts)}</span><span class="text-slate-400 truncate max-w-[45%]">${item.page || '/'}</span>`;
+      el.appendChild(row);
+    });
+  }
+
+  async function loadStats(key) {
+    const res = await fetch('/api/stats', { headers: { 'x-admin-key': key } });
+    if (!res.ok) throw new Error('unauthorized');
+    return res.json();
+  }
+
+  async function showDashboard(key) {
+    try {
+      const data = await loadStats(key);
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
+      document.getElementById('stat-visits').textContent = data.visits.toLocaleString('th-TH');
+      document.getElementById('stat-orders').textContent = data.orders.toLocaleString('th-TH');
+      document.getElementById('stat-rate').textContent = data.conversionRate + '%';
+      document.getElementById('last-updated').textContent = new Date().toLocaleString('th-TH');
+      renderList(document.getElementById('recent-visits'), data.recentVisits);
+      renderList(document.getElementById('recent-orders'), data.recentOrders);
+      localStorage.setItem(STORAGE_KEY, key);
+    } catch (e) {
+      document.getElementById('login-error').classList.remove('hidden');
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+
+  document.getElementById('login-btn').addEventListener('click', () => {
+    const key = document.getElementById('admin-key-input').value.trim();
+    if (key) showDashboard(key);
+  });
+
+  document.getElementById('admin-key-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('login-btn').click();
+  });
+
+  document.getElementById('refresh-btn')?.addEventListener('click', () => {
+    const key = localStorage.getItem(STORAGE_KEY);
+    if (key) showDashboard(key);
+  });
+
+  document.getElementById('logout-btn')?.addEventListener('click', () => {
+    localStorage.removeItem(STORAGE_KEY);
+    document.getElementById('dashboard').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
+  });
+
+  // Auto-login if a key was already saved in this browser.
+  const savedKey = localStorage.getItem(STORAGE_KEY);
+  if (savedKey) showDashboard(savedKey);
+</script>
+</body>
+</html>

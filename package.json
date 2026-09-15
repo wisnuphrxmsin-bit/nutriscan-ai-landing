@@ -1,0 +1,9 @@
+{
+  "name": "nutriscan-ai-landing",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NutriScan AI landing page with visit/order tracking via Netlify Functions + Blobs",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}
