@@ -1,8 +1,10 @@
-const { getStore } = require("@netlify/blobs");
+const { connectLambda, getStore } = require("@netlify/blobs");
 
 // GET /.netlify/functions/stats   (also reachable at /api/stats via redirect)
 // Requires header  x-admin-key: <value of the ADMIN_KEY env var set in Netlify>
 exports.handler = async (event) => {
+  connectLambda(event);
+
   const adminKey = process.env.ADMIN_KEY;
   const headers = event.headers || {};
   const provided = headers["x-admin-key"] || headers["X-Admin-Key"];
