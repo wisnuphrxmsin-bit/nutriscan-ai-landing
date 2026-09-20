@@ -39,18 +39,12 @@ exports.handler = async (event) => {
 
   const store = getStore("stats");
 
-  const totals = (await store.get("totals", { type: "json" })) || {
-    visits: 0,
-    orders: 0,
-  };
   const recentVisits = (await store.get("recent_visit", { type: "json" })) || [];
   const recentOrders = (await store.get("recent_order", { type: "json" })) || [];
 
-  // Build the per-day breakdown from the SAME logs shown in "recent
-  // activity" below, so the numbers can never disagree with each other.
-  // Note: these logs are capped at the last 100 events per type, so very
-  // old days may undercount once traffic grows past that — the all-time
-  // totals above are still exact regardless.
+  // Per-day breakdown, built from the SAME logs shown below, so the
+  // numbers can never disagree with each other. Capped at the last 100
+  // events per type, so very old days may undercount once traffic grows.
   const dailyMap = {};
   function bump(list, field) {
     list.forEach((item) => {
@@ -62,10 +56,23 @@ exports.handler = async (event) => {
   }
   bump(recentVisits, "visits");
   bump(recentOrders, "orders");
-
   const daily = Object.values(dailyMap).sort((a, b) =>
     a.date < b.date ? 1 : -1
   );
+
+  // Summary numbers = sum of the same logs (kept consistent with "daily").
+  const visits = daily.reduce((s, d) => s + d.visits, 0);
+  const orders = daily.reduce((s, d) => s + d.orders, 0);
+
+  // Package + referral breakdown, derived from recentOrders.
+  const packageBreakdown = { basic: 0, monthly: 0, annual: 0 };
+  let referralUses = 0;
+  recentOrders.forEach((o) => {
+    if (o.package && Object.prototype.hasOwnProperty.call(packageBreakdown, o.package)) {
+      packageBreakdown[o.package] += 1;
+    }
+    if (o.referral) referralUses += 1;
+  });
 
   const qs = event.queryStringParameters || {};
   const from = qs.from;
@@ -84,25 +91,19 @@ exports.handler = async (event) => {
     );
   }
 
-    // Use the SAME numbers shown in the daily table for the top summary
-  // cards too, so they can never disagree with each other again.
-  const visits = daily.reduce((s, d) => s + d.visits, 0);
-  const orders = daily.reduce((s, d) => s + d.orders, 0);
-
   return {
     statusCode: 200,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      visits: visits,
-      orders: orders,
-      conversionRate:
-        visits > 0
-          ? +((orders / visits) * 100).toFixed(2)
-          : 0,
+      visits,
+      orders,
+      conversionRate: visits > 0 ? +((orders / visits) * 100).toFixed(2) : 0,
       recentVisits,
       recentOrders,
       daily,
       rangeTotals,
+      packageBreakdown,
+      referralUses,
     }),
   };
 };
