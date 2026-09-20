@@ -94,6 +94,28 @@
     </div>
     <p class="text-xs text-slate-400 mt-3">* อ้างอิงจาก log กิจกรรมล่าสุด 100 รายการต่อประเภท ถ้ามีคนเข้าชม/สั่งซื้อมากกว่านี้ วันเก่าๆอาจแสดงตัวเลขไม่ครบ แต่ยอดรวมทั้งหมดด้านบนยังถูกต้องเสมอ</p>
   </div>
+    <!-- Package choice + referral breakdown -->
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm mb-8">
+    <h2 class="font-semibold mb-3">แยกตามแพ็กเกจที่เลือกซื้อ</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div>
+        <div class="text-xs text-slate-500 mb-1">เครื่องเปล่า (Basic)</div>
+        <div class="num text-2xl font-bold text-slate-900" id="pkg-basic">-</div>
+      </div>
+      <div>
+        <div class="text-xs text-slate-500 mb-1">เครื่อง + รายเดือน</div>
+        <div class="num text-2xl font-bold text-emerald-700" id="pkg-monthly">-</div>
+      </div>
+      <div>
+        <div class="text-xs text-slate-500 mb-1">เครื่อง + รายปี</div>
+        <div class="num text-2xl font-bold text-teal-700" id="pkg-annual">-</div>
+      </div>
+      <div>
+        <div class="text-xs text-slate-500 mb-1">ใช้โค้ดเพื่อน</div>
+        <div class="num text-2xl font-bold text-purple-700" id="pkg-referral">-</div>
+      </div>
+    </div>
+  </div>
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
     <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
@@ -190,6 +212,10 @@
       renderList(document.getElementById('recent-visits'), data.recentVisits);
       renderList(document.getElementById('recent-orders'), data.recentOrders);
       renderDaily(data.daily);
+      document.getElementById('pkg-basic').textContent = (data.packageBreakdown?.basic || 0).toLocaleString('th-TH');
+      document.getElementById('pkg-monthly').textContent = (data.packageBreakdown?.monthly || 0).toLocaleString('th-TH');
+      document.getElementById('pkg-annual').textContent = (data.packageBreakdown?.annual || 0).toLocaleString('th-TH');
+      document.getElementById('pkg-referral').textContent = (data.referralUses || 0).toLocaleString('th-TH');
       localStorage.setItem(STORAGE_KEY, key);
     } catch (e) {
       document.getElementById('login-error').classList.remove('hidden');
