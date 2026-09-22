@@ -39,6 +39,13 @@ exports.handler = async (event) => {
 
   const store = getStore("stats");
 
+  // Uncapped, all-time totals — used for the top summary cards so they
+  // never plateau even after the recent-activity logs below fill up.
+  const totals = (await store.get("totals", { type: "json" })) || {
+    visits: 0,
+    orders: 0,
+  };
+
   const recentVisits = (await store.get("recent_visit", { type: "json" })) || [];
   const recentOrders = (await store.get("recent_order", { type: "json" })) || [];
 
@@ -60,9 +67,11 @@ exports.handler = async (event) => {
     a.date < b.date ? 1 : -1
   );
 
-  // Summary numbers = sum of the same logs (kept consistent with "daily").
-  const visits = daily.reduce((s, d) => s + d.visits, 0);
-  const orders = daily.reduce((s, d) => s + d.orders, 0);
+  // Summary numbers = the uncapped all-time totals (see above), NOT a sum
+  // of the logs below, so they keep growing correctly no matter how much
+  // traffic the site gets.
+  const visits = totals.visits || 0;
+  const orders = totals.orders || 0;
 
   // Package + referral breakdown, derived from recentOrders.
   const packageBreakdown = { basic: 0, monthly: 0, annual: 0 };
