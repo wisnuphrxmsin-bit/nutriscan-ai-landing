@@ -1,21 +1,5 @@
 const { connectLambda, getStore } = require("@netlify/blobs");
 
-function toBangkokDate(iso) {
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Bangkok",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date(iso));
-  } catch {
-    return null;
-  }
-}
-
-// GET /.netlify/functions/stats   (also reachable at /api/stats via redirect)
-// Optional query params: ?from=YYYY-MM-DD&to=YYYY-MM-DD  -> adds "rangeTotals"
-// Requires header  x-admin-key: <value of the ADMIN_KEY env var set in Netlify>
 exports.handler = async (event) => {
   connectLambda(event);
 
@@ -24,64 +8,31 @@ exports.handler = async (event) => {
   const provided = headers["x-admin-key"] || headers["X-Admin-Key"];
 
   if (!adminKey) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: "ADMIN_KEY is not set on this site" }),
-    };
+    return { statusCode: 500, body: JSON.stringify({ error: "ADMIN_KEY is not set on this site" }) };
   }
-
   if (provided !== adminKey) {
-    return {
-      statusCode: 401,
-      body: JSON.stringify({ error: "unauthorized" }),
-    };
+    return { statusCode: 401, body: JSON.stringify({ error: "unauthorized" }) };
   }
 
   const store = getStore("stats");
 
-  // Uncapped, all-time totals — used for the top summary cards so they
-  // never plateau even after the recent-activity logs below fill up.
   const totals = (await store.get("totals", { type: "json" })) || {
     visits: 0,
     orders: 0,
+    packages: { basic: 0, monthly: 0, annual: 0 },
+    referralUses: 0,
   };
+  const packageBreakdown = totals.packages || { basic: 0, monthly: 0, annual: 0 };
+  const referralUses = totals.referralUses || 0;
 
-  const recentVisits = (await store.get("recent_visit", { type: "json" })) || [];
-  const recentOrders = (await store.get("recent_order", { type: "json" })) || [];
-
-  // Per-day breakdown, built from the SAME logs shown below, so the
-  // numbers can never disagree with each other. Capped at the last 100
-  // events per type, so very old days may undercount once traffic grows.
-  const dailyMap = {};
-  function bump(list, field) {
-    list.forEach((item) => {
-      const date = toBangkokDate(item.ts);
-      if (!date) return;
-      if (!dailyMap[date]) dailyMap[date] = { date, visits: 0, orders: 0 };
-      dailyMap[date][field] += 1;
-    });
+  const daily = [];
+  const { blobs } = await store.list({ prefix: "daily:" });
+  for (const item of blobs) {
+    const date = item.key.replace("daily:", "");
+    const value = (await store.get(item.key, { type: "json" })) || { visits: 0, orders: 0 };
+    daily.push({ date, visits: value.visits || 0, orders: value.orders || 0 });
   }
-  bump(recentVisits, "visits");
-  bump(recentOrders, "orders");
-  const daily = Object.values(dailyMap).sort((a, b) =>
-    a.date < b.date ? 1 : -1
-  );
-
-  // Summary numbers = the uncapped all-time totals (see above), NOT a sum
-  // of the logs below, so they keep growing correctly no matter how much
-  // traffic the site gets.
-  const visits = totals.visits || 0;
-  const orders = totals.orders || 0;
-
-  // Package + referral breakdown, derived from recentOrders.
-  const packageBreakdown = { basic: 0, monthly: 0, annual: 0 };
-  let referralUses = 0;
-  recentOrders.forEach((o) => {
-    if (o.package && Object.prototype.hasOwnProperty.call(packageBreakdown, o.package)) {
-      packageBreakdown[o.package] += 1;
-    }
-    if (o.referral) referralUses += 1;
-  });
+  daily.sort((a, b) => (a.date < b.date ? 1 : -1));
 
   const qs = event.queryStringParameters || {};
   const from = qs.from;
@@ -104,11 +55,9 @@ exports.handler = async (event) => {
     statusCode: 200,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      visits,
-      orders,
-      conversionRate: visits > 0 ? +((orders / visits) * 100).toFixed(2) : 0,
-      recentVisits,
-      recentOrders,
+      visits: totals.visits || 0,
+      orders: totals.orders || 0,
+      conversionRate: totals.visits > 0 ? +((totals.orders / totals.visits) * 100).toFixed(2) : 0,
       daily,
       rangeTotals,
       packageBreakdown,
