@@ -76,7 +76,20 @@
     </div>
     <p class="text-xs text-slate-400 mt-3">กด "ค้นหา" แล้วตัวเลขในการ์ดด้านบนจะเปลี่ยนเป็นยอดของช่วงวันที่เลือกทันที</p>
   </div>
-
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm mb-8">
+    <h2 class="font-semibold mb-3">ปรับตัวเลขเอง (Manual Override)</h2>
+    <div class="flex flex-wrap items-end gap-3">
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">ผู้เข้าชม</label>
+        <input id="adjust-visits" type="number" min="0" placeholder="เช่น 100" class="border border-slate-300 rounded-lg px-3 py-2 text-sm w-32">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">คนกดสั่งซื้อ</label>
+        <input id="adjust-orders" type="number" min="0" placeholder="เช่น 25" class="border border-slate-300 rounded-lg px-3 py-2 text-sm w-32">
+      </div>
+      <button id="adjust-btn" class="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold">บันทึกตัวเลข</button>
+    </div>
+  </div>
   <!-- Daily breakdown table -->
   <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm mb-8">
     <h2 class="font-semibold mb-3">สถิติแยกตามวัน</h2>
@@ -275,7 +288,33 @@
       setSummaryCards(fullStatsCache.visits, fullStatsCache.orders, 'รวมทั้งหมด');
     }
   });
-
+    document.getElementById('adjust-btn')?.addEventListener('click', async () => {
+      const key = localStorage.getItem(STORAGE_KEY);
+      if (!key) return;
+      const visitsVal = document.getElementById('adjust-visits').value;
+      const ordersVal = document.getElementById('adjust-orders').value;
+      const payload = {};
+      if (visitsVal !== '') payload.visits = Number(visitsVal);
+      if (ordersVal !== '') payload.orders = Number(ordersVal);
+      if (Object.keys(payload).length === 0) {
+        alert('กรุณากรอกตัวเลขอย่างน้อย 1 ช่อง');
+        return;
+      }
+      try {
+        const res = await fetch('/api/adjust', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error('adjust failed');
+        document.getElementById('adjust-visits').value = '';
+        document.getElementById('adjust-orders').value = '';
+        await showDashboard(key);
+        alert('บันทึกตัวเลขเรียบร้อยแล้ว');
+      } catch (e) {
+        alert('บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง');
+      }
+    });
   const savedKey = localStorage.getItem(STORAGE_KEY);
   if (savedKey) showDashboard(savedKey);
 </script>
