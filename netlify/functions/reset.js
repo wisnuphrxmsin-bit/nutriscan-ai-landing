@@ -32,9 +32,18 @@ exports.handler = async (event) => {
 
   const store = getStore("stats");
 
-  await store.setJSON("totals", { visits: 0, orders: 0 });
-  await store.setJSON("recent_visit", []);
-  await store.setJSON("recent_order", []);
+  await store.setJSON("totals", {
+    visits: 0,
+    orders: 0,
+    packages: { basic: 0, monthly: 0, annual: 0 },
+    referralUses: 0,
+  });
+
+  // Delete every per-day counter too.
+  const { blobs } = await store.list({ prefix: "daily:" });
+  for (const item of blobs) {
+    await store.delete(item.key);
+  }
 
   return {
     statusCode: 200,
