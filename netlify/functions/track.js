@@ -55,3 +55,13 @@ exports.handler = async (event) => {
 
   const today = bangkokDateString();
   const dailyKey = "daily:" + today;
+  const daily = (await store.get(dailyKey, { type: "json" })) || { visits: 0, orders: 0 };
+  daily[field] += 1;
+  await store.setJSON(dailyKey, daily);
+
+  return {
+    statusCode: 200,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ok: true, totals }),
+  };
+};
