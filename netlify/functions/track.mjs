@@ -1,17 +1,19 @@
 const { connectLambda, getStore } = require("@netlify/blobs");
 
-// POST /.netlify/functions/track   (also reachable at /api/track via redirect)
-// body: { "type": "visit" | "order", "page": "/",
-//         "package"?: "basic" | "monthly" | "annual", "referral"?: boolean }
-// Every call counts — there is no per-browser de-duplication server-side.
+function bangkokDateString(d = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
 exports.handler = async (event) => {
   connectLambda(event);
 
   if (event.httpMethod !== "POST") {
-    return {
-      statusCode: 405,
-      body: JSON.stringify({ error: "method not allowed" }),
-    };
+    return { statusCode: 405, body: JSON.stringify({ error: "method not allowed" }) };
   }
 
   let body;
@@ -23,44 +25,33 @@ exports.handler = async (event) => {
 
   const type = body.type;
   if (type !== "visit" && type !== "order") {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: "invalid type" }),
-    };
+    return { statusCode: 400, body: JSON.stringify({ error: "invalid type" }) };
   }
 
   const store = getStore("stats");
+  const field = type === "visit" ? "visits" : "orders";
 
-  // 1. All-time running total.
   const totalsKey = "totals";
   const totals = (await store.get(totalsKey, { type: "json" })) || {
     visits: 0,
     orders: 0,
+    packages: { basic: 0, monthly: 0, annual: 0 },
+    referralUses: 0,
   };
-  totals[type === "visit" ? "visits" : "orders"] += 1;
+  if (!totals.packages) totals.packages = { basic: 0, monthly: 0, annual: 0 };
+  if (typeof totals.referralUses !== "number") totals.referralUses = 0;
+
+  totals[field] += 1;
+
+  if (type === "order") {
+    if (["basic", "monthly", "annual"].includes(body.package)) {
+      totals.packages[body.package] += 1;
+    }
+    if (body.referral === true) {
+      totals.referralUses += 1;
+    }
+  }
   await store.setJSON(totalsKey, totals);
 
-  // 2. Keep a recent-activity log (capped). For orders, this also records
-  //    which package was chosen and whether a referral code was used —
-  //    the dashboard derives the package/referral breakdown from this log.
-  const logKey = "recent_" + type;
-  const log = (await store.get(logKey, { type: "json" })) || [];
-  const entry = {
-    ts: new Date().toISOString(),
-    page: typeof body.page === "string" ? body.page.slice(0, 200) : "/",
-  };
-  if (type === "order") {
-    entry.package = ["basic", "monthly", "annual"].includes(body.package)
-      ? body.package
-      : null;
-    entry.referral = body.referral === true;
-  }
-  log.unshift(entry);
-  await store.setJSON(logKey, log.slice(0, 100));
-
-  return {
-    statusCode: 200,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ok: true, totals }),
-  };
-};
+  const today = bangkokDateString();
+  const dailyKey = "daily:" + today;
