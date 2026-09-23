@@ -18,6 +18,6 @@
   status = 200
 
 [[redirects]]
-  from = "/api/generation"
-  to = "/.netlify/functions/generation"
+  from = "/api/adjust"
+  to = "/.netlify/functions/adjust"
   status = 200
